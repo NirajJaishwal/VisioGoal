@@ -1,0 +1,36 @@
+# Environment / secrets
+.env
+.env.local
+*.local
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.mypy_cache/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-error.log*
+
+# Data / caches (raw API responses, local vector store, models)
+data/
+.cache/
+*.sqlite3
+
+# Docker volumes (if bind-mounted locally)
+postgres_data/
+chroma_data/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

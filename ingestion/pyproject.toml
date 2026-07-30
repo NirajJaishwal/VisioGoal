@@ -1,0 +1,28 @@
+[project]
+name = "football-intel-ingestion"
+version = "0.1.0"
+description = "Batch data pipeline: fetch -> transform -> load -> embed"
+requires-python = ">=3.12"
+dependencies = [
+    "pandas>=2.2",
+    "httpx>=0.27",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.29",
+    "chromadb>=0.5",
+    "sentence-transformers>=3.0",
+    "pydantic-settings>=2.3",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.6"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["sources*", "transform*", "load*", "embed*", "pipelines*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
