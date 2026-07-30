@@ -19,6 +19,11 @@ class League(Base, TimestampMixin):
     __tablename__ = "leagues"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # Stable id from the external data provider (Football-Data.org competition id).
+    # Enables idempotent upserts and re-running ingestion without duplicates.
+    external_id: Mapped[int] = mapped_column(
+        Integer, unique=True, index=True, nullable=False
+    )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     country: Mapped[str] = mapped_column(String(80), nullable=False)
     # Season stored as the starting year, e.g. 2024 for the 2024/25 season.

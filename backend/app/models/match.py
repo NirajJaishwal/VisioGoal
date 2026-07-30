@@ -19,6 +19,10 @@ class Match(Base, TimestampMixin):
     __tablename__ = "matches"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # Stable id from the external data provider (Football-Data.org match id).
+    external_id: Mapped[int] = mapped_column(
+        Integer, unique=True, index=True, nullable=False
+    )
     league_id: Mapped[int] = mapped_column(
         ForeignKey("leagues.id", ondelete="CASCADE"), index=True, nullable=False
     )

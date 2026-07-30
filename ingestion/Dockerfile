@@ -11,11 +11,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./
+COPY common ./common
 COPY sources ./sources
 COPY transform ./transform
 COPY load ./load
 COPY embed ./embed
 COPY pipelines ./pipelines
+COPY scripts ./scripts
 RUN pip install -e .
 
 COPY . .
