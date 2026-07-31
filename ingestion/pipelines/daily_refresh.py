@@ -50,16 +50,23 @@ async def _process_competition(
     """Run fetch → transform → store for a single competition code."""
     _print(f"\n=== {code} ===")
 
+    # Optional season pin: when set, every season-scoped endpoint and the league
+    # row use it, so the whole dataset stays consistent. Unset → current season.
+    season = settings.football_data_season
+
     # --- Fetch (each request is throttled + retried inside the client) ---
     competition = await client.get_competition(code)
-    teams_payload = await client.get_teams(code)
-    standings_payload = await client.get_standings(code)
-    matches_payload = await client.get_matches(code)
+    teams_payload = await client.get_teams(code, season=season)
+    standings_payload = await client.get_standings(code, season=season)
+    matches_payload = await client.get_matches(code, season=season)
 
     # --- Transform (pure, no I/O) ---
     league_row = transform_league(competition)
-    team_rows = transform_teams(teams_payload)
+    if season is not None:
+        # Keep the league row on the fetched season, not the API's current one.
+        league_row["season"] = season
     standing_rows = transform_standings(standings_payload, league_row["season"])
+    team_rows = transform_teams(teams_payload)
     match_rows = transform_matches(matches_payload)
 
     log_event(
@@ -76,6 +83,7 @@ async def _process_competition(
     )
 
     # --- Store: one transaction per competition (rolls back on failure) ---
+    load_season = league_row["season"]
     async with AsyncSessionLocal() as session:
         async with session.begin():
             league_id, league_res = await upsert_league(session, league_row)
@@ -85,12 +93,12 @@ async def _process_competition(
             _report("teams", code, teams_res, totals)
 
             standings_res = await upsert_standings(
-                session, league_id, standing_rows, team_map
+                session, league_id, load_season, standing_rows, team_map
             )
             _report("standings", code, standings_res, totals)
 
             matches_res = await upsert_matches(
-                session, league_id, match_rows, team_map
+                session, league_id, load_season, match_rows, team_map
             )
             _report("matches", code, matches_res, totals)
         # `session.begin()` commits here on success, or has rolled back on error.
@@ -108,15 +116,18 @@ def _report(
         inserted=result.inserted,
         updated=result.updated,
         skipped=result.skipped,
+        deleted=result.deleted,
     )
     _print(
         f"[{code}] {entity:<9} inserted={result.inserted} "
-        f"updated={result.updated} skipped={result.skipped}"
+        f"updated={result.updated} deleted={result.deleted} "
+        f"skipped={result.skipped}"
     )
     agg = totals.setdefault(entity, LoadResult())
     agg.inserted += result.inserted
     agg.updated += result.updated
     agg.skipped += result.skipped
+    agg.deleted += result.deleted
 
 
 async def run() -> dict[str, LoadResult]:
@@ -144,8 +155,8 @@ async def run() -> dict[str, LoadResult]:
     _print("\n--- Summary ---")
     for entity, res in totals.items():
         _print(
-            f"{entity:<9} inserted={res.inserted} "
-            f"updated={res.updated} skipped={res.skipped}"
+            f"{entity:<9} inserted={res.inserted} updated={res.updated} "
+            f"deleted={res.deleted} skipped={res.skipped}"
         )
     _print(f"Completed in {elapsed:.1f}s")
     log_event(

@@ -54,6 +54,7 @@ matches = Table(
     Column("league_id", Integer, ForeignKey("leagues.id"), nullable=False),
     Column("home_team_id", Integer, ForeignKey("teams.id"), nullable=False),
     Column("away_team_id", Integer, ForeignKey("teams.id"), nullable=False),
+    Column("season", Integer),
     Column("matchday", Integer),
     Column("kickoff_datetime", DateTime(timezone=True)),
     Column("home_score", Integer),

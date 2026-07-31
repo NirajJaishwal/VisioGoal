@@ -32,6 +32,11 @@ log = get_logger(__name__)
 _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
 
+def _season(season: int | None) -> dict[str, Any] | None:
+    """Build the optional `?season=YYYY` query param (omitted when None)."""
+    return {"season": season} if season is not None else None
+
+
 class FootballDataError(SourceError):
     """Raised for non-recoverable Football-Data.org responses."""
 
@@ -68,14 +73,20 @@ class FootballDataClient:
     async def get_competition(self, code: str) -> dict[str, Any]:
         return await self._get(f"/competitions/{code}")
 
-    async def get_teams(self, code: str) -> dict[str, Any]:
-        return await self._get(f"/competitions/{code}/teams")
+    async def get_teams(self, code: str, season: int | None = None) -> dict[str, Any]:
+        return await self._get(f"/competitions/{code}/teams", params=_season(season))
 
-    async def get_standings(self, code: str) -> dict[str, Any]:
-        return await self._get(f"/competitions/{code}/standings")
+    async def get_standings(
+        self, code: str, season: int | None = None
+    ) -> dict[str, Any]:
+        return await self._get(
+            f"/competitions/{code}/standings", params=_season(season)
+        )
 
-    async def get_matches(self, code: str) -> dict[str, Any]:
-        return await self._get(f"/competitions/{code}/matches")
+    async def get_matches(
+        self, code: str, season: int | None = None
+    ) -> dict[str, Any]:
+        return await self._get(f"/competitions/{code}/matches", params=_season(season))
 
     # --- internals ---------------------------------------------------------
     async def _throttle(self) -> None:
@@ -85,7 +96,9 @@ class FootballDataClient:
         if self._last_request_at and elapsed < min_interval:
             await asyncio.sleep(min_interval - elapsed)
 
-    async def _get(self, path: str) -> dict[str, Any]:
+    async def _get(
+        self, path: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """GET `path` with throttling, retries, and clean error handling."""
         if self._client is None:
             raise FootballDataError(
@@ -97,11 +110,11 @@ class FootballDataClient:
             await self._throttle()
             log.info(
                 "api_request",
-                extra={"endpoint": path, "attempt": attempt},
+                extra={"endpoint": path, "params": params or {}, "attempt": attempt},
             )
             self._last_request_at = time.monotonic()
             try:
-                response = await self._client.get(path)
+                response = await self._client.get(path, params=params)
             except httpx.TransportError as exc:
                 # Network-level failure (DNS, connection reset, timeout) — retry.
                 last_exc = exc

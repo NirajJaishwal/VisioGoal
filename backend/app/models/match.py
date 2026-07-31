@@ -32,6 +32,10 @@ class Match(Base, TimestampMixin):
     away_team_id: Mapped[int] = mapped_column(
         ForeignKey("teams.id", ondelete="CASCADE"), index=True, nullable=False
     )
+    # Season starting year (e.g. 2025 for 2025/26). Lets ingestion scope its
+    # per-season cleanup to a single season without touching other seasons —
+    # mirroring how `standings` and `leagues` already carry `season`.
+    season: Mapped[int | None] = mapped_column(Integer, index=True)
     matchday: Mapped[int | None] = mapped_column(Integer, index=True)
     kickoff_datetime: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), index=True

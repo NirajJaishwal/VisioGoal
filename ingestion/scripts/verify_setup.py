@@ -62,7 +62,9 @@ async def _check_api_and_ingest() -> bool:
         async with FootballDataClient() as client:
             competition = await client.get_competition(PROBE_CODE)
             _ok("API connectivity", f"fetched competition {competition.get('name')!r}")
-            teams_payload = await client.get_teams(PROBE_CODE)
+            teams_payload = await client.get_teams(
+                PROBE_CODE, season=settings.football_data_season
+            )
     except Exception as exc:  # noqa: BLE001
         _fail("API connectivity", repr(exc))
         return False
@@ -70,6 +72,8 @@ async def _check_api_and_ingest() -> bool:
     # --- Ingest the probe league + teams, then read the counts back ---
     try:
         league_row = transform_league(competition)
+        if settings.football_data_season is not None:
+            league_row["season"] = settings.football_data_season
         team_rows = transform_teams(teams_payload)
         async with AsyncSessionLocal() as session:
             async with session.begin():

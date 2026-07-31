@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     #   PL=Premier League · PD=La Liga · BL1=Bundesliga · SA=Serie A · FL1=Ligue 1
     football_data_competitions: list[str] = ["PL", "PD", "BL1", "SA", "FL1"]
 
+    # Season to ingest, as the starting year (e.g. 2025 for the 2025/26 season).
+    # Left unset, the pipeline fetches each competition's *current* season — which,
+    # before a new season kicks off, has no played matches (all scores null). Pin a
+    # completed/in-progress season here to ingest real results.
+    football_data_season: int | None = None
+
     # --- HTTP resilience ---
     request_timeout_seconds: float = 30.0
     max_retries: int = 5

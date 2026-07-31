@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Sequence
 
-from sqlalchemy import select, tuple_
+from sqlalchemy import delete, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +31,7 @@ class LoadResult:
     inserted: int = 0
     updated: int = 0
     skipped: int = 0
+    deleted: int = 0
 
     @property
     def total(self) -> int:
@@ -59,6 +60,38 @@ async def _existing_composite(
         select(*columns).where(tuple_(*columns).in_([tuple(k) for k in keys]))
     )
     return {tuple(row) for row in result.all()}
+
+
+async def _prune(
+    session: AsyncSession,
+    table: Any,
+    *,
+    league_id: int,
+    season: int,
+    keep_col: str,
+    keep_values: Sequence[Any],
+) -> int:
+    """Delete rows for exactly one (league_id, season) that are no longer present.
+
+    Removes rows in `table` scoped to `league_id` AND `season` whose `keep_col`
+    is not in `keep_values` — i.e. only stale rows of the season being loaded.
+    Other seasons are never matched (the `season` predicate excludes them), and
+    leagues/teams are never touched (this only ever runs against fact tables).
+
+    Safety: if `keep_values` is empty (nothing was fetched — e.g. a transient
+    empty response), pruning is skipped entirely rather than deleting the whole
+    season, so a bad fetch can't wipe good data.
+    """
+    if not keep_values:
+        return 0
+    result = await session.execute(
+        delete(table).where(
+            table.c.league_id == league_id,
+            table.c.season == season,
+            table.c[keep_col].notin_(list(keep_values)),
+        )
+    )
+    return result.rowcount or 0
 
 
 async def _upsert(
@@ -137,10 +170,16 @@ async def upsert_teams(
 async def upsert_standings(
     session: AsyncSession,
     league_id: int,
+    season: int,
     rows: list[dict[str, Any]],
     team_map: dict[int, int],
 ) -> LoadResult:
-    """Upsert standings, resolving provider team ids to internal ids."""
+    """Upsert standings, resolving provider team ids to internal ids.
+
+    After upserting, prune any standings rows for *this league and season only*
+    whose team is no longer in the fetched table (e.g. a relegated/absent team
+    from an earlier run), so the season's data mirrors the source exactly.
+    """
     prepared: list[dict[str, Any]] = []
     skipped = 0
     for row in rows:
@@ -188,16 +227,30 @@ async def upsert_standings(
         key_of=lambda r: (r["league_id"], r["team_id"], r["season"]),
     )
     result.skipped = skipped
+    result.deleted = await _prune(
+        session,
+        standings,
+        league_id=league_id,
+        season=season,
+        keep_col="team_id",
+        keep_values=[r["team_id"] for r in prepared],
+    )
     return result
 
 
 async def upsert_matches(
     session: AsyncSession,
     league_id: int,
+    season: int,
     rows: list[dict[str, Any]],
     team_map: dict[int, int],
 ) -> LoadResult:
-    """Upsert matches, resolving provider team ids to internal ids."""
+    """Upsert matches, resolving provider team ids to internal ids.
+
+    Each row is stamped with `season`. After upserting, prune any matches for
+    *this league and season only* whose external id is no longer in the fetched
+    set (e.g. a fixture removed upstream since an earlier run).
+    """
     prepared: list[dict[str, Any]] = []
     skipped = 0
     for row in rows:
@@ -220,6 +273,7 @@ async def upsert_matches(
                 "league_id": league_id,
                 "home_team_id": home_id,
                 "away_team_id": away_id,
+                "season": season,
                 "matchday": row["matchday"],
                 "kickoff_datetime": row["kickoff_datetime"],
                 "home_score": row["home_score"],
@@ -237,11 +291,19 @@ async def upsert_matches(
         prepared,
         conflict_cols=["external_id"],
         update_cols=[
-            "league_id", "home_team_id", "away_team_id", "matchday",
+            "league_id", "home_team_id", "away_team_id", "season", "matchday",
             "kickoff_datetime", "home_score", "away_score", "status",
         ],
         existing=existing,
         key_of=lambda r: r["external_id"],
     )
     result.skipped = skipped
+    result.deleted = await _prune(
+        session,
+        matches,
+        league_id=league_id,
+        season=season,
+        keep_col="external_id",
+        keep_values=[r["external_id"] for r in prepared],
+    )
     return result
