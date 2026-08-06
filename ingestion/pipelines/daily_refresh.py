@@ -45,14 +45,16 @@ def _print(message: str) -> None:
 
 
 async def _process_competition(
-    client: FootballDataClient, code: str, totals: dict[str, LoadResult]
+    client: FootballDataClient,
+    code: str,
+    season: int | None,
+    totals: dict[str, LoadResult],
 ) -> None:
     """Run fetch → transform → store for a single competition code."""
-    _print(f"\n=== {code} ===")
+    _print(f"\n=== {code} / {season if season is not None else 'current'} ===")
 
     # Optional season pin: when set, every season-scoped endpoint and the league
     # row use it, so the whole dataset stays consistent. Unset → current season.
-    season = settings.football_data_season
 
     # --- Fetch (each request is throttled + retried inside the client) ---
     competition = await client.get_competition(code)
@@ -62,17 +64,22 @@ async def _process_competition(
 
     # --- Transform (pure, no I/O) ---
     league_row = transform_league(competition)
+    league_row["name"] = settings.competition_display_name(code, league_row["name"])
     if season is not None:
         # Keep the league row on the fetched season, not the API's current one.
         league_row["season"] = season
     standing_rows = transform_standings(standings_payload, league_row["season"])
     team_rows = transform_teams(teams_payload)
     match_rows = transform_matches(matches_payload)
+    # This is the season stored on the league row (the requested season when
+    # one was supplied; otherwise the provider's current-season value).
+    load_season = league_row["season"]
 
     log_event(
         log,
         "records_fetched",
         competition=code,
+        season=load_season,
         teams=len(team_rows),
         standings=len(standing_rows),
         matches=len(match_rows),
@@ -83,35 +90,38 @@ async def _process_competition(
     )
 
     # --- Store: one transaction per competition (rolls back on failure) ---
-    load_season = league_row["season"]
-    async with AsyncSessionLocal() as session:
-        async with session.begin():
-            league_id, league_res = await upsert_league(session, league_row)
-            _report("leagues", code, league_res, totals)
+    async with AsyncSessionLocal() as session, session.begin():
+        league_id, league_res = await upsert_league(session, league_row)
+        _report("leagues", code, load_season, league_res, totals)
 
-            teams_res, team_map = await upsert_teams(session, league_id, team_rows)
-            _report("teams", code, teams_res, totals)
+        teams_res, team_map = await upsert_teams(session, league_id, team_rows)
+        _report("teams", code, load_season, teams_res, totals)
 
-            standings_res = await upsert_standings(
-                session, league_id, load_season, standing_rows, team_map
-            )
-            _report("standings", code, standings_res, totals)
+        standings_res = await upsert_standings(
+            session, league_id, load_season, standing_rows, team_map
+        )
+        _report("standings", code, load_season, standings_res, totals)
 
-            matches_res = await upsert_matches(
-                session, league_id, load_season, match_rows, team_map
-            )
-            _report("matches", code, matches_res, totals)
+        matches_res = await upsert_matches(
+            session, league_id, load_season, match_rows, team_map
+        )
+        _report("matches", code, load_season, matches_res, totals)
         # `session.begin()` commits here on success, or has rolled back on error.
 
 
 def _report(
-    entity: str, code: str, result: LoadResult, totals: dict[str, LoadResult]
+    entity: str,
+    code: str,
+    season: int,
+    result: LoadResult,
+    totals: dict[str, LoadResult],
 ) -> None:
     """Log + print a single entity's load result and fold it into the totals."""
     log_event(
         log,
         "records_loaded",
         competition=code,
+        season=season,
         entity=entity,
         inserted=result.inserted,
         updated=result.updated,
@@ -138,18 +148,20 @@ async def run() -> dict[str, LoadResult]:
 
     _print("Football data ingestion — daily refresh")
     _print(f"Competitions: {', '.join(settings.football_data_competitions)}")
+    _print(f"Seasons: {', '.join(str(s) for s in settings.football_data_seasons)}")
     log_event(
         log, "pipeline_started", competitions=settings.football_data_competitions
     )
 
     async with FootballDataClient() as client:
         for code in settings.football_data_competitions:
-            try:
-                await _process_competition(client, code, totals)
-            except SourceError as exc:
-                # Skip this competition, keep going with the rest.
-                log_event(log, "competition_failed", competition=code, error=str(exc))
-                _print(f"[{code}] FAILED: {exc}")
+            for season in settings.football_data_seasons:
+                try:
+                    await _process_competition(client, code, season, totals)
+                except SourceError as exc:
+                    # One failed season rolls back independently and is safe to rerun.
+                    log_event(log, "competition_season_failed", competition=code, season=season, error=str(exc))
+                    _print(f"[{code}/{season}] FAILED: {exc}")
 
     elapsed = time.monotonic() - start
     _print("\n--- Summary ---")

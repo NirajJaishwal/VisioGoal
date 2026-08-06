@@ -16,10 +16,16 @@ from functools import cached_property
 from typing import Any
 
 from common.config import settings
+from common.logging import get_logger, log_event
+
+log = get_logger(__name__)
 
 
 class Embedder:
     """Local embedding model + Chroma collection accessor (lazy-loaded)."""
+
+    def __init__(self, batch_size: int | None = None) -> None:
+        self._batch_size = batch_size or settings.chroma_upsert_batch_size
 
     @cached_property
     def _model(self):
@@ -49,15 +55,39 @@ class Embedder:
         documents: list[str],
         metadatas: list[dict[str, Any]],
     ) -> None:
-        """Upsert vectors + source text + metadata into Chroma by id."""
+        """Upsert vectors + source text + metadata in safe Chroma batches."""
         if not ids:
             return
-        self._collection.upsert(
-            ids=ids,
-            embeddings=embeddings,
-            documents=documents,
-            metadatas=metadatas,
+        sizes = {len(ids), len(embeddings), len(documents), len(metadatas)}
+        if len(sizes) != 1:
+            raise ValueError("Chroma upsert inputs must have matching lengths")
+
+        total = len(ids)
+        batches = (total + self._batch_size - 1) // self._batch_size
+        log_event(
+            log,
+            "chroma_upsert_started",
+            documents=total,
+            batches=batches,
+            batch_size=self._batch_size,
         )
+        for batch_number, start in enumerate(range(0, total, self._batch_size), start=1):
+            end = min(start + self._batch_size, total)
+            self._collection.upsert(
+                ids=ids[start:end],
+                embeddings=embeddings[start:end],
+                documents=documents[start:end],
+                metadatas=metadatas[start:end],
+            )
+            log_event(
+                log,
+                "chroma_upsert_progress",
+                batch=batch_number,
+                batches=batches,
+                documents_in_batch=end - start,
+                documents_uploaded=end,
+                documents_total=total,
+            )
 
     def count(self) -> int:
         return self._collection.count()

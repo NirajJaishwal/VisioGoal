@@ -111,17 +111,18 @@ async def _resolve_scopes(
       2. Fallback: every league at its latest season — for broad questions
          ("summarize the season") where no single entity was matched.
     """
-    league_ids: list[int] = []
+    requested: list[tuple[int, int]] = []
     for meta in metadatas:
-        lid = (meta or {}).get("league_id")
-        if isinstance(lid, int) and lid not in league_ids:
-            league_ids.append(lid)
+        lid, season = (meta or {}).get("league_id"), (meta or {}).get("season")
+        if isinstance(lid, int) and isinstance(season, int) and (lid, season) not in requested:
+            requested.append((lid, season))
 
-    if league_ids:
-        league_ids = league_ids[:_MAX_SCOPED_LEAGUES]
-        leagues = await _leagues_by_id(session, league_ids)
-    else:
-        leagues = await _all_leagues(session)
+    if requested:
+        requested = requested[:_MAX_SCOPED_LEAGUES * 3]
+        leagues = await _leagues_by_id(session, [lid for lid, _ in requested])
+        by_id = {league.id: league for league in leagues}
+        return [(by_id[lid], season) for lid, season in requested if lid in by_id]
+    leagues = await _all_leagues(session)
 
     scopes: list[tuple[League, int]] = []
     for league in leagues:

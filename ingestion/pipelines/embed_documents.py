@@ -21,7 +21,7 @@ from common.config import settings
 from common.logging import configure_logging, get_logger, log_event
 from embed.embedder import Embedder
 from embed.store import upsert_documents
-from embed.summaries import Doc, league_doc, match_doc, team_doc
+from embed.summaries import Doc, league_doc, match_doc, team_doc, trend_doc
 from load.db import AsyncSessionLocal
 from load.tables import leagues, matches, standings, teams
 
@@ -43,6 +43,13 @@ async def _target_season(session) -> int | None:
     if settings.football_data_season is not None:
         return settings.football_data_season
     return await session.scalar(select(func.max(standings.c.season)))
+
+
+async def _target_seasons(session) -> list[int]:
+    if settings.football_data_start_season is not None:
+        return [s for s in settings.football_data_seasons if s is not None]
+    rows = await session.execute(select(standings.c.season).distinct().order_by(standings.c.season))
+    return [row[0] for row in rows]
 
 
 async def _build_docs(session, season: int) -> list[Doc]:
@@ -104,13 +111,28 @@ async def run() -> int:
     _print("Football embed pipeline — generating summaries and vectors")
 
     async with AsyncSessionLocal() as session:
-        season = await _target_season(session)
-        if season is None:
+        seasons = await _target_seasons(session)
+        if not seasons:
             _print("No standings found — run the data refresh first. Nothing to embed.")
             return 0
 
-        _print(f"Target season: {season}")
-        docs = await _build_docs(session, season)
+        _print(f"Target seasons: {', '.join(map(str, seasons))}")
+        docs = []
+        for season in seasons:
+            docs.extend(await _build_docs(session, season))
+        # Group duplicated clubs by provider id so trend docs span league-season rows.
+        team_rows = await _rows(session, select(teams))
+        standing_rows = await _rows(session, select(standings).where(standings.c.season.in_(seasons)))
+        league_rows = await _rows(session, select(leagues))
+        teams_by_id = {row["id"]: row for row in team_rows}
+        by_provider: dict[int, list[dict]] = {}
+        for row in standing_rows:
+            team = teams_by_id.get(row["team_id"])
+            if team:
+                by_provider.setdefault(team["external_id"], []).append({**row, "team": team})
+        league_by_id = {row["id"]: row for row in league_rows}
+        for rows in by_provider.values():
+            docs.append(trend_doc(rows[0]["team"], rows, league_by_id))
         _print(f"Built {len(docs)} summaries (teams + leagues + matches)")
         if not docs:
             return 0
@@ -145,7 +167,7 @@ async def run() -> int:
         _print(f"Mirrored {written} rows into the documents table")
 
     elapsed = time.monotonic() - start
-    log_event(log, "embed_finished", season=season, documents=len(docs))
+    log_event(log, "embed_finished", seasons=seasons, documents=len(docs))
     _print(f"Completed in {elapsed:.1f}s")
     return len(docs)
 

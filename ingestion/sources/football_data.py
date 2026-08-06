@@ -88,6 +88,37 @@ class FootballDataClient:
     ) -> dict[str, Any]:
         return await self._get(f"/competitions/{code}/matches", params=_season(season))
 
+    async def probe(
+        self, path: str, params: dict[str, Any] | None = None
+    ) -> tuple[int, dict[str, Any] | None, dict[str, str]]:
+        """Make one un-retried request for the capability probe.
+
+        The normal ingestion methods deliberately retry transient failures. A
+        probe instead needs the provider's *actual* response status so it can
+        distinguish an unavailable endpoint (404), a subscription restriction
+        (401/403), and rate limiting (429).  Callers receive a parsed JSON body
+        when possible plus the response headers relevant to rate-limit reports.
+        """
+        if self._client is None:
+            raise FootballDataError(
+                "Client not initialized — use 'async with FootballDataClient()'."
+            )
+        await self._throttle()
+        self._last_request_at = time.monotonic()
+        response = await self._client.get(path, params=params)
+        try:
+            payload: dict[str, Any] | None = response.json()
+        except ValueError:
+            payload = None
+        headers = {
+            key: value
+            for key, value in response.headers.items()
+            if "limit" in key.lower()
+            or "rate" in key.lower()
+            or key.lower() == "retry-after"
+        }
+        return response.status_code, payload, headers
+
     # --- internals ---------------------------------------------------------
     async def _throttle(self) -> None:
         """Sleep so consecutive requests respect the minimum interval."""

@@ -29,7 +29,7 @@ leagues = Table(
     "leagues",
     metadata,
     Column("id", Integer, primary_key=True),
-    Column("external_id", Integer, unique=True, nullable=False),
+    Column("external_id", Integer, nullable=False),
     Column("name", String(120), nullable=False),
     Column("country", String(80), nullable=False),
     Column("season", Integer, nullable=False),
@@ -39,12 +39,13 @@ teams = Table(
     "teams",
     metadata,
     Column("id", Integer, primary_key=True),
-    Column("external_id", Integer, unique=True, nullable=False),
+    Column("external_id", Integer, nullable=False),
     Column("league_id", Integer, ForeignKey("leagues.id"), nullable=False),
     Column("name", String(120), nullable=False),
     Column("short_name", String(60)),
     Column("crest_url", String(500)),
     Column("venue", String(160)),
+    UniqueConstraint("external_id", "league_id", name="uq_teams_external_league"),
 )
 
 matches = Table(

@@ -124,20 +124,22 @@ async def upsert_league(
     session: AsyncSession, row: dict[str, Any]
 ) -> tuple[int, LoadResult]:
     """Upsert one league and return its internal id plus the load result."""
-    existing = await _existing_single(
-        session, leagues, "external_id", [row["external_id"]]
+    existing = await _existing_composite(
+        session, leagues, ["external_id", "season"], [(row["external_id"], row["season"])]
     )
     result = await _upsert(
         session,
         leagues,
         [row],
-        conflict_cols=["external_id"],
+        conflict_cols=["external_id", "season"],
         update_cols=["name", "country", "season"],
         existing=existing,
-        key_of=lambda r: r["external_id"],
+        key_of=lambda r: (r["external_id"], r["season"]),
     )
     internal_id = await session.scalar(
-        select(leagues.c.id).where(leagues.c.external_id == row["external_id"])
+        select(leagues.c.id).where(
+            leagues.c.external_id == row["external_id"], leagues.c.season == row["season"]
+        )
     )
     return int(internal_id), result
 
@@ -147,17 +149,20 @@ async def upsert_teams(
 ) -> tuple[LoadResult, dict[int, int]]:
     """Upsert teams for a league; return the result and a provider→internal map."""
     prepared = [{**row, "league_id": league_id} for row in rows]
-    existing = await _existing_single(
-        session, teams, "external_id", [r["external_id"] for r in prepared]
+    existing = await _existing_composite(
+        session,
+        teams,
+        ["external_id", "league_id"],
+        [(r["external_id"], r["league_id"]) for r in prepared],
     )
     result = await _upsert(
         session,
         teams,
         prepared,
-        conflict_cols=["external_id"],
+        conflict_cols=["external_id", "league_id"],
         update_cols=["league_id", "name", "short_name", "crest_url", "venue"],
         existing=existing,
-        key_of=lambda r: r["external_id"],
+        key_of=lambda r: (r["external_id"], r["league_id"]),
     )
     # Build the provider-id → internal-id map for FK resolution downstream.
     result_rows = await session.execute(

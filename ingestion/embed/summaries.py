@@ -144,3 +144,28 @@ def match_doc(match: dict, home: str, away: str, league: dict) -> Doc:
         },
         source=f"{home} {hs}-{as_} {away} ({when})",
     )
+
+
+def trend_doc(team: dict, rows: list[dict], leagues_by_id: dict[int, dict]) -> Doc:
+    """Cross-season team trajectory grounded in every available standing row."""
+    ordered = sorted(rows, key=lambda row: row["season"])
+    first, last = ordered[0], ordered[-1]
+    history = "; ".join(
+        f"{row['season']}: {row['points']} points, {_ordinal(row['position'])} in "
+        f"{leagues_by_id[row['league_id']]['name']}"
+        for row in ordered
+        if row["league_id"] in leagues_by_id
+    )
+    return Doc(
+        doc_id=f"trend:team:{team['external_id']}",
+        entity_type="team_trend",
+        entity_id=team["id"],
+        content=(
+            f"Historical performance for {team['name']} from {first['season']} to "
+            f"{last['season']}: {history}. Their points changed from "
+            f"{first['points']} to {last['points']} over this period."
+        ),
+        metadata={"entity_type": "team_trend", "entity_id": team["id"], "season": last["season"],
+                  "league_id": last["league_id"], "source": f"{team['name']} Historical Trend"},
+        source=f"{team['name']} Historical Trend",
+    )

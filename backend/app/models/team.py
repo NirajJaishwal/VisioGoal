@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -17,12 +17,13 @@ if TYPE_CHECKING:
 
 class Team(Base, TimestampMixin):
     __tablename__ = "teams"
+    __table_args__ = (UniqueConstraint("external_id", "league_id", name="uq_teams_external_league"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     # Stable id from the external data provider (Football-Data.org team id). Used
     # to resolve match/standing team references to internal ids across endpoints.
     external_id: Mapped[int] = mapped_column(
-        Integer, unique=True, index=True, nullable=False
+        Integer, index=True, nullable=False
     )
     league_id: Mapped[int] = mapped_column(
         ForeignKey("leagues.id", ondelete="CASCADE"), index=True, nullable=False

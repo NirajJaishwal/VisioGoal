@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Integer, String
+from sqlalchemy import Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -17,12 +17,13 @@ if TYPE_CHECKING:
 
 class League(Base, TimestampMixin):
     __tablename__ = "leagues"
+    __table_args__ = (UniqueConstraint("external_id", "season", name="uq_leagues_external_season"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     # Stable id from the external data provider (Football-Data.org competition id).
     # Enables idempotent upserts and re-running ingestion without duplicates.
     external_id: Mapped[int] = mapped_column(
-        Integer, unique=True, index=True, nullable=False
+        Integer, index=True, nullable=False
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     country: Mapped[str] = mapped_column(String(80), nullable=False)

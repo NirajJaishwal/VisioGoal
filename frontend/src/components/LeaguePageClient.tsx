@@ -1,22 +1,25 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 
 import { GoalsScatterChart } from "@/components/charts/GoalsScatterChart";
 import { PointsBarChart } from "@/components/charts/PointsBarChart";
 import { StandingsTable } from "@/components/StandingsTable";
 import { ErrorRetry } from "@/components/ui/ErrorRetry";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { useLeague, useStandings } from "@/lib/queries";
+import { useLeague, useLeagues, useStandings } from "@/lib/queries";
 import { formatSeason } from "@/lib/utils";
 
 /** League standings page: header, sortable table, and charts. */
 export function LeaguePageClient({ leagueId }: { leagueId: number }) {
-  const league = useLeague(leagueId);
+  const leagues = useLeagues();
+  const [selectedLeagueId, setSelectedLeagueId] = useState(leagueId);
+  const league = useLeague(selectedLeagueId);
   const season = league.data?.season;
-  const standings = useStandings(leagueId, season);
+  const standings = useStandings(selectedLeagueId, season);
 
-  if (!Number.isFinite(leagueId)) {
+  if (!Number.isFinite(selectedLeagueId)) {
     return <ErrorRetry title="Invalid league" message="That league id is not valid." />;
   }
 
@@ -64,9 +67,12 @@ export function LeaguePageClient({ leagueId }: { leagueId: number }) {
               <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
                 {league.data.name}
               </h1>
-              <span className="rounded-md bg-accent/10 px-2 py-1 text-xs font-medium text-accent">
-                {formatSeason(league.data.season)}
-              </span>
+              <SeasonSelector
+                leagues={leagues.data ?? []}
+                currentId={selectedLeagueId}
+                externalId={league.data.external_id}
+                onChange={setSelectedLeagueId}
+              />
               <span className="w-full text-sm text-muted sm:w-auto">
                 {league.data.country}
               </span>
@@ -97,6 +103,35 @@ export function LeaguePageClient({ leagueId }: { leagueId: number }) {
         </p>
       )}
     </div>
+  );
+}
+
+function SeasonSelector({
+  leagues,
+  currentId,
+  externalId,
+  onChange,
+}: {
+  leagues: Array<{ id: number; external_id: number; season: number }>;
+  currentId: number;
+  externalId: number;
+  onChange: (id: number) => void;
+}) {
+  const seasons = leagues
+    .filter((item) => item.external_id === externalId)
+    .sort((a, b) => b.season - a.season);
+  if (seasons.length < 2) {
+    return <span className="rounded-md bg-accent/10 px-2 py-1 text-xs font-medium text-accent">{formatSeason(seasons[0]?.season ?? 0)}</span>;
+  }
+  return (
+    <select
+      aria-label="Season"
+      value={currentId}
+      onChange={(event) => onChange(Number(event.target.value))}
+      className="rounded-md border border-border bg-surface px-2 py-1 text-xs font-medium text-accent"
+    >
+      {seasons.map((item) => <option key={item.id} value={item.id}>{formatSeason(item.season)}</option>)}
+    </select>
   );
 }
 
