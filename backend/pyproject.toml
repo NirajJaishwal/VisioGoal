@@ -11,7 +11,7 @@ dependencies = [
     "alembic>=1.13",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
-    "anthropic>=0.39",
+    "groq>=1.0",
     "chromadb>=0.5",
     "sentence-transformers>=3.0",
     "httpx>=0.27",
@@ -30,6 +30,13 @@ include = ["app*"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint]
+# EXE002 ("file is executable but no shebang is present") fires on every file in
+# this repo: the Windows Docker bind mount marks all mounted files executable, so
+# the rule reports an environment artifact rather than a code problem. Ignoring it
+# keeps `ruff check .` usable as a real signal.
+ignore = ["EXE002"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

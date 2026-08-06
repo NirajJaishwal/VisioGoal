@@ -14,7 +14,7 @@ This document reflects the **approved MVP-narrowed scope**. Deferred items are l
 - **Ingest offline, serve online.** Batch jobs fetch → clean → load → embed. The API and
   RAG layer only ever *read* pre-computed data. Never call external APIs on the request path.
 - **RAG is deliberately transparent** for the MVP: hand-written pipeline (embed → retrieve →
-  prompt → generate) using the **Anthropic SDK + ChromaDB + Sentence Transformers**.
+  prompt → generate) using the **Groq SDK + ChromaDB + Sentence Transformers**.
   No LlamaIndex, no agents, no tool-calling, no SQL-agent — so the pipeline is fully legible.
 
 ---
@@ -81,11 +81,11 @@ football-intel/
 ```
 Router (api/v1)  →  Service (services)  →  ORM (models)  →  Postgres
                         │
-                        └→  ai/  →  ChromaDB + Claude API
+                        └→  ai/  →  ChromaDB + Groq API
 ```
 
 - Thin routers (validate → call service → return schema). No logic in routers.
-- Async SQLAlchemy + async Anthropic calls, so a slow LLM never blocks stat endpoints.
+- Async SQLAlchemy + async Groq calls, so a slow LLM never blocks stat endpoints.
 - Config via `pydantic-settings` from env; centralized logging + a global error handler;
   CORS locked to the frontend origin.
 
@@ -144,7 +144,7 @@ User query
 ChromaDB similarity search → top-k football summary documents
    │  assemble context (retrieved docs only)
    ▼
-Claude (Anthropic SDK), streaming
+Groq (OpenAI-style chat completions), streaming
    │  system prompt: answer ONLY from context; say "I don't have that data" otherwise
    ▼
 SSE → frontend   (+ persist turn to chat_messages)
@@ -158,8 +158,8 @@ drawn Y, sit Nth with Z points…"*. LLMs ground far better on prose than on raw
 structured+semantic retrieval. (Semantic-only retrieval keeps the pipeline understandable;
 hybrid is a documented post-MVP upgrade.)
 
-**Models:** Claude via the Anthropic SDK (model id from env, verified against the current
-`claude-api` reference at implementation time). Embeddings: `all-MiniLM-L6-v2` (local,
+**Models:** Groq-hosted open models via the Groq SDK (model id from env, `GROQ_MODEL`;
+see console.groq.com/docs/models for the current catalog). Embeddings: `all-MiniLM-L6-v2` (local,
 free, fast — no external embedding dependency).
 
 ---
@@ -201,7 +201,7 @@ initial load. Run on demand (`docker compose run ingestion`) — no scheduler ye
 
 **Day 2 — Intelligence & UI**
 5. Embedding job → summaries → ChromaDB.
-6. `POST /chat`: embed → retrieve → prompt → Claude (streaming), persist to `chat_messages`.
+6. `POST /chat`: embed → retrieve → prompt → Groq (streaming), persist to `chat_messages`.
 7. Frontend: dashboard, team/matches/standings pages with charts, streaming chat.
 8. Polish: error handling, empty states, README.
 
@@ -210,7 +210,7 @@ initial load. Run on demand (`docker compose run ingestion`) — no scheduler ye
 ## 10. Recommended Dependencies
 
 **Backend:** `fastapi`, `uvicorn[standard]`, `sqlalchemy[asyncio]`, `asyncpg`, `alembic`,
-`pydantic`, `pydantic-settings`, `anthropic`, `chromadb`, `sentence-transformers`, `httpx`.
+`pydantic`, `pydantic-settings`, `groq`, `chromadb`, `sentence-transformers`, `httpx`.
 Dev: `pytest`, `pytest-asyncio`, `ruff`.
 
 **Ingestion:** `pandas`, `httpx`, `sqlalchemy`, `asyncpg`, `chromadb`, `sentence-transformers`.
@@ -223,7 +223,7 @@ Dev: `pytest`, `pytest-asyncio`, `ruff`.
 ## 11. Security (MVP-appropriate)
 
 - Secrets via env only (`.env` git-ignored, `.env.example` committed).
-- Anthropic key lives server-side; the frontend never sees it — all AI calls proxy through FastAPI.
+- Groq key lives server-side; the frontend never sees it — all AI calls proxy through FastAPI.
 - Pydantic validation on every endpoint; cap chat input size.
 - Treat retrieved documents as data, not instructions (basic prompt-injection hygiene).
 - Parameterized queries only (SQLAlchemy). CORS restricted to the frontend origin.

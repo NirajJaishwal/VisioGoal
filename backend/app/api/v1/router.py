@@ -7,10 +7,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import leagues, matches, standings, teams
+from app.api.v1.endpoints import chat, leagues, matches, standings, teams
 
 api_router = APIRouter()
 api_router.include_router(leagues.router)
 api_router.include_router(standings.router)
 api_router.include_router(teams.router)
 api_router.include_router(matches.router)
+api_router.include_router(chat.router)

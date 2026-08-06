@@ -19,6 +19,7 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    Text,
     UniqueConstraint,
 )
 
@@ -78,4 +79,16 @@ standings = Table(
     Column("goals_against", Integer, nullable=False),
     Column("points", Integer, nullable=False),
     UniqueConstraint("league_id", "team_id", "season", name="uq_standings_team_season"),
+)
+
+# Mirrors each embedded chunk's source text; `chroma_id` links to the vector in
+# ChromaDB and is the idempotency key for the embed step (ON CONFLICT target).
+documents = Table(
+    "documents",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("entity_type", String(40), nullable=False),
+    Column("entity_id", Integer, nullable=False),
+    Column("content", Text, nullable=False),
+    Column("chroma_id", String(100), unique=True),
 )

@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Semantic color tokens (HSL channels). Light is the default; `.dark` on
+   <html> overrides them. Kept minimal and professional. */
+:root {
+  --background: 210 20% 98%;
+  --surface: 0 0% 100%;
+  --border: 214 22% 90%;
+  --foreground: 222 40% 12%;
+  --muted: 215 16% 46%;
+  --accent: 158 64% 38%;
+  --accent-foreground: 0 0% 100%;
+}
+
+.dark {
+  --background: 222 32% 7%;
+  --surface: 222 26% 11%;
+  --border: 217 20% 20%;
+  --foreground: 210 20% 96%;
+  --muted: 215 18% 62%;
+  --accent: 152 58% 46%;
+  --accent-foreground: 222 47% 9%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+@layer utilities {
+  /* Subtle shimmer used by skeleton loaders. */
+  .skeleton {
+    @apply relative overflow-hidden bg-border/60 rounded-md;
+  }
+  .skeleton::after {
+    @apply absolute inset-0 -translate-x-full;
+    content: "";
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--surface) / 0.55),
+      transparent
+    );
+    animation: shimmer 1.6s infinite;
+  }
+}

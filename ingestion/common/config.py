@@ -42,6 +42,15 @@ class Settings(BaseSettings):
     # completed/in-progress season here to ingest real results.
     football_data_season: int | None = None
 
+    # --- Embeddings / vector store (RAG) ---
+    # Local Sentence-Transformers model; MUST match the backend so a query
+    # embedded at answer time lands in the same space as the embedded documents.
+    embedding_model: str = "all-MiniLM-L6-v2"
+    # ChromaDB connection — compose service name + internal port.
+    chroma_host: str = "chromadb"
+    chroma_port: int = 8000
+    chroma_collection: str = "football_docs"
+
     # --- HTTP resilience ---
     request_timeout_seconds: float = 30.0
     max_retries: int = 5

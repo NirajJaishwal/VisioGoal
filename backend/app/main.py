@@ -38,6 +38,10 @@ OPENAPI_TAGS = [
     {"name": "standings", "description": "League tables (basic team statistics)."},
     {"name": "teams", "description": "Clubs, filterable by league and season."},
     {"name": "matches", "description": "Fixtures and results, with rich filtering."},
+    {
+        "name": "chat",
+        "description": "AI football analyst — streamed, grounded answers with citations.",
+    },
 ]
 
 

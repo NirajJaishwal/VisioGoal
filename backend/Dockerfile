@@ -11,10 +11,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies first for better layer caching.
+# Install dependencies first for better layer caching. The `[dev]` extra brings
+# in ruff + pytest so `docker compose exec backend ruff check .` / `pytest` work
+# in this development image — with a plain `pip install -e .` they are absent
+# from $PATH and those commands fail with "executable file not found".
 COPY pyproject.toml ./
 COPY app ./app
-RUN pip install -e .
+RUN pip install -e ".[dev]"
 
 COPY . .
 
